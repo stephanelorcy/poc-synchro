@@ -24,6 +24,9 @@
     <!-- your app's js -->
     <script src="js/app.js"></script>
   </head>
+
+<!-- Debut BODY -->
+
   <body ng-app="starter">
 
     <ion-pane>
@@ -36,7 +39,7 @@
       <!-- Content -->
       <ion-content ng-controller="elevagesCtrl" ng-model="elevages" ng-model-instant>
         <ion-list>
-          <ion-item ng-repeat="elevage in elevages" ng-model-instant>
+          <ion-item ng-repeat="elevage in elevages" ng-click="showElevage(elevage)" ng-model-instant>
             {{elevage.name}}
           </ion-item>
         </ion-list>
@@ -46,6 +49,48 @@
       </ion-content>
 
     </ion-pane>
+
+    <-- Template detail -->
+
+    <script id="show-elevage.html" type="text/ng-template">
+
+    <div class="modal">
+
+      <!-- Modal header bar -->
+      <ion-header-bar class="bar-secondary">
+        <h1 class="title">{{elevage.name}}</h1>
+        <button class="button button-clear button-positive" ng-click="cancelElevage()">Cancel</button>
+      </ion-header-bar>
+
+      <!-- Modal content area -->
+      <ion-content>
+
+        <form ng-submit="hideElevage()">
+          <div class="list">
+            <label class="item item-input">
+              <input type="text" placeholder="nom de l'élevage..." ng-model="elevage.name">
+            </label>
+          </div>
+          <ion-list>
+            <ion-item ng-repeat="animaux in animauxByElevage[elevage.id]" ng-model-instant>
+              RACE : {{animaux.race}} NOM : {{animaux.name}}
+            </ion-item>
+          </ion-list>
+          <div class="padding">
+            <button type="submit" class="button button-block button-positive">Retour</button>
+          </div>
+        </form>
+
+      </ion-content>
+
+    </div>
+
+    </script>
+
+    <-- Fin du template detail -->
   
   </body>
+
+<!-- That's all fox ... -->
+
 </html>

@@ -199,7 +199,8 @@ angular.module('synchro', [])
     elevages.push( {
       "id":id,
       "date":date,
-      "name":name
+      "name":name,
+      "local":date
     });
   }
   
@@ -314,6 +315,7 @@ angular.module('synchro', [])
 
   sm.listenElevages($scope).then(function(elevages) {
     $scope.elevages = elevages;
+    $scope.online = true;
   });
 
   sa.listenAnimaux($scope).then(function(animauxByElevage) {
@@ -324,7 +326,7 @@ angular.module('synchro', [])
 
   $scope.$on("$destroy", function handler() {
     sm.unlistenElevages($scope);
-    sa.unlistenElevages($scope);
+    sa.unlistenAnimaux($scope);
   });
 
   $scope.log = function() {
@@ -347,6 +349,11 @@ angular.module('synchro', [])
   $scope.cancelElevage = function() {
     $scope.elevage.name = $scope.oldElevageName;
     $scope.hideElevage();
+  }
+
+  // Toggle synchro
+  $scope.toggleSync = function() {
+    $scope.online = !$scope.online;
   }
 
   // Gestion du detail : on utilise la fonction modale de ionic.

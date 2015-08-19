@@ -1,1 +1,3 @@
 /* Empty. Add your own CSS if you like */
+.local { color: green; }
+.notlocal { color: grey; text-decoration: line-through; }

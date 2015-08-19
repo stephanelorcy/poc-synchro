@@ -27,19 +27,22 @@
 
 <!-- Debut BODY -->
 
-  <body ng-app="starter">
+  <body ng-app="starter" ng-controller="elevagesCtrl">
 
     <ion-pane>
 
       <!-- Header -->
       <ion-header-bar class="bar-stable">
+        <button class="button button-icon" ng-click="toggleSync()">
+          <i class="icon" ng-class="{'ion-connection-bars' : online, 'ion-alert-circled' : !online}"></i>
+        </button>
         <h1 class="title">Sample Pouchdb Synchro</h1>
       </ion-header-bar>
 
       <!-- Content -->
-      <ion-content ng-controller="elevagesCtrl" ng-model="elevages" ng-model-instant>
+      <ion-content ng-model="elevages" ng-model-instant>
         <ion-list>
-          <ion-item ng-repeat="elevage in elevages" ng-click="showElevage(elevage)" ng-model-instant>
+          <ion-item ng-repeat="elevage in elevages" ng-click="showElevage(elevage)" ng-class="{local: elevage.local, notlocal:!elevage.local}" ng-model-instant>
             {{elevage.name}}
           </ion-item>
         </ion-list>

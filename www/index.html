@@ -36,7 +36,11 @@
         <button class="button button-icon" ng-click="toggleSync()">
           <i class="icon" ng-class="{'ion-connection-bars' : online, 'ion-alert-circled' : !online}"></i>
         </button>
+        <i class="icon padding" ng-show = "online" ng-model-instant ng-class="{'ion-load-d' : synchronizing, 'ion-ios-checkmark-empty' : !synchronizing}"></i>
         <h1 class="title">Sample Pouchdb Synchro</h1>
+        <button class="button button-assertive" ng-click="reset()">
+          reset
+        </button>
       </ion-header-bar>
 
       <!-- Content -->
@@ -68,7 +72,7 @@
       <!-- Modal content area -->
       <ion-content>
 
-        <form ng-submit="hideElevage()">
+        <form ng-show="elevage.date" ng-submit="hideElevage()">
           <div class="list">
             <label class="item item-input">
               <input type="text" placeholder="nom de l'élevage..." ng-model="elevage.name">
@@ -83,6 +87,16 @@
             <button type="submit" class="button button-block button-positive">Retour</button>
           </div>
         </form>
+
+        <div ng-show="!elevage.date">
+          <div class="card padding">
+            <p>Cet élevage n'est pas dans votre tournée actuelle.</p>
+            <p>Il n'est donc pas synchronisé.</p>
+          </div>
+          <button class="button button-block button-positive" ng-click="forceSync(elevage)">
+            Forcer la synchronisation de {{elevage.name}}
+          </button>
+        </div>
 
       </ion-content>
 

@@ -5,7 +5,7 @@
 // the 2nd parameter is an array of 'requires'
 angular.module('starter', ['ionic','synchro'])
 
-.run(function($ionicPlatform, $log, synchroManager) {
+.run(function($ionicPlatform, $log) {
   $ionicPlatform.ready(function() {
     // Hide the accessory bar by default (remove this to show the accessory bar above the keyboard
     // for form inputs)
@@ -15,9 +15,6 @@ angular.module('starter', ['ionic','synchro'])
     if(window.StatusBar) {
       StatusBar.styleDefault();
     }
-
-    synchroManager.start();
-
   });
 })
 
@@ -33,6 +30,35 @@ angular.module('synchro', [])
     animauxUrl : ROOT_DB+"/animaux"
   }
 })
+
+.factory('syncNotifier', ['$log', '$rootScope', function($log,$rs) {
+  var n = 0;
+
+  return {
+    synchronizingOn: function() {
+      $log.log("Start synchronizing..." + n);
+      n++;
+      if(n == 1) {
+        $log.log("Start synchronizing...");
+        //$rs.$apply(function() {
+          $rs.$broadcast('startSyncronizing');
+        //});
+      }
+    },
+    synchronizingOff: function() {
+      $log.log("Stop synchronizing..." + n);
+      if(n>0) {
+        n--;
+        if(n == 0) {
+          $log.log("Stop synchronizing...");
+          //$rs.$apply(function() {
+            $rs.$broadcast('stopSyncronizing');
+          //});
+        }
+      }
+    }
+  }
+}])
 
 .factory('db', ["$log", function($log) {
   // Simple pouchdb accessor
@@ -62,12 +88,20 @@ angular.module('synchro', [])
   }
 }])
 
-.factory('synchroAnimaux', ["$log", "$q", 'synchroConfiguration', 'db', function($log, $q, sc, db) {
+.factory('synchroAnimaux', ["$log", "$q", 'synchroConfiguration', 'db','syncNotifier', function($log, $q, sc, db, sn) {
   // Service de synchronisation des animaux ...
   var animauxDB = db.get('animaux');
   var handler;
   var animauxByElevage = {};
   var animaux_q = $q.defer();
+
+  var syncOn = function() {
+    sn.synchronizingOn();
+  }
+
+  var syncOff = function() {
+    sn.synchronizingOff();
+  }
 
   function updateAnimal(animaux, animal) {
     for(var i = 0; i<animaux.length; i++) {
@@ -120,34 +154,52 @@ angular.module('synchro', [])
     }
   }
 
-  var updateAnimaux = function(docs) {
-      $log.log("updateAnimaux");
+  var updateAnimaux = function(docs, elevages) {
+      var objEl;
+      if(elevages) {
+        objEl = {};
+        elevages.forEach(function(el) { if(el.date) objEl[el.id] = true});
+      }
+      $log.log("updateAnimaux "+JSON.stringify(objEl));
       docs.forEach(function(doc) {
-        pushAnimal(doc.idElevage, {id:doc._id, race:doc.race, name:doc.name, deleted:doc._deleted});        
+        (!objEl||objEl[doc.idElevage])&&pushAnimal(doc.idElevage, {id:doc._id, race:doc.race, name:doc.name, deleted:doc._deleted});        
       });
       applyScope();
   }
 
-  //First initialization
-  animauxDB.allDocs({
-    include_docs: true
-  }).then(function (result) {
-    $log.log(JSON.stringify(result));
-    result.rows&&updateAnimaux(result.rows.map(function(row) { return row.doc }));
-    return animaux_q.resolve(animauxByElevage);
-  }).catch(function (err) {
-    $log.log(err);
-  });
+  var removeAnimauxIn = function(idElevages) {
+    var animauxToDelete = [];
+    idElevages.forEach(function(idElevage) {
+      $log.log("Suppression elevage : "+idElevage);
+      if(animauxByElevage[idElevage]) {
+         $log.log("Elevage a supprimer existe : "+idElevage);
+        animauxToDelete=animauxToDelete.concat(animauxByElevage[idElevage].map(function(animal) {return animal.id}));
+        delete animauxByElevage[idElevage];
+      }
+    });
+    $log.log("animauxToDelete : "+JSON.stringify(animauxToDelete));
+    return animauxDB.allDocs({keys:animauxToDelete}).then(function(docs) {
+      $log.log("animauxToDelete : "+JSON.stringify(docs));
+      // On devrait les supprimer de la base.
+      // Mais ca pose ensuite des pb de synchro.
+      // On se contente donc de les supprimer
+      //if(docs.rows&&docs.rows.length>0) {
+      //  return animauxDB.bulkDocs(docs.rows.map(function(doc) {
+      //    return {_id:doc.id, _rev:doc.value.rev, _deleted:true};
+      //  }));
+      //}
+    })
+  }
 
-  return {
-    changeSync: function(idElevages) {
-      stopSync();
-      $log.log("Starting sync animaux entities "+JSON.stringify(idElevages));
+  var startSyncAnimaux = function(idElevages) {
+    var idEl = [];
+    idElevages.forEach(function(id) {id&&idEl.push(id)});
+    $log.log("Starting sync animaux entities "+JSON.stringify(idEl));
       handler = animauxDB.replicate.from(sc.animauxUrl, {
         live:true,
         retry:true,
         filter: 'custom/byElevages',
-        query_params: {elevagesIds: idElevages}
+        query_params: {elevagesIds: idEl}
       })
       .on('change', function (change) {
         $log.log("change :"+JSON.stringify(change.docs));
@@ -156,21 +208,69 @@ angular.module('synchro', [])
       })
       .on('paused', function (info) {
         // replication was paused, usually because of a lost connection
-        $log.log("paused :"+JSON.stringify(info));
+        syncOff();
+        $log.log("paused animaux:"+JSON.stringify(info));
       })
       .on('active', function (info) {
-        // replication was resumed
+        syncOn();
         $log.log("active :"+JSON.stringify(info));
       })
       .on('error', function (err) {
         // totally unhandled error (shouldn't happen)
+        syncOff();
         $log.log("error :"+JSON.stringify(err));
       });
+  }
 
+  var cleanAnimaux = function() {
+    for(var k in animauxByElevage) {
+      $log.log("Cleaning animals for elevage "+k);
+      delete animauxByElevage[k];
+    }
+  }
+
+  var loadAnimaux = function(elevages) {
+    cleanAnimaux();
+    // Load animals into memory
+    animauxDB.allDocs({
+      include_docs: true
+    }).then(function (result) {
+      $log.log(JSON.stringify(result));
+      result.rows&&updateAnimaux(result.rows.map(function(row) { return row.doc }), elevages);
+      return animaux_q.resolve(animauxByElevage);
+    }).catch(function (err) {
+      $log.log(err);
+    });
+  }
+
+  return {
+
+    stop: function() {
+      stopSync();
+    },
+
+    changeSync: function(idElevages, idElevagesToDelete) {
+      stopSync();
+      //removeAnimauxIn(idElevagesToDelete).then(function() {startSyncAnimaux(idElevages)});
+      startSyncAnimaux(idElevages);
+    },
+
+    reset: function(elevages) {
+      stopSync();
+      cleanAnimaux();
+      db.remove('animaux');
+      animauxDB.destroy().then(function (response) {
+        animauxDB = db.get('animaux');
+        startSyncAnimaux(elevages.map(function(el) { if(el.date) return el.id}));
+      });
     },
 
     forceSync: function(animal) {
 
+    },
+
+    loadAnimaux:function(elevages) {
+      return loadAnimaux(elevages);
     },
 
     listenAnimaux: function(scope) {
@@ -187,10 +287,18 @@ angular.module('synchro', [])
   };
 }])
 
-.factory('synchroManager', ["$log", "$q", 'synchroConfiguration', 'db', 'synchroAnimaux', function($log, $q, sc, db, sa) {
+.factory('synchroManager', ["$log", "$q", 'synchroConfiguration', 'db', 'synchroAnimaux', 'syncNotifier', function($log, $q, sc, db, sa, syncNotifier) {
   // This simple service control the synchronization for a specific user
   var userDb = db.get('user');
   var handler;
+
+  var syncOn = function() {
+    syncNotifier.synchronizingOn();
+  }
+
+  var syncOff = function() {
+    syncNotifier.synchronizingOff();
+  }
 
   var elevages = [];
   var elevages_q = $q.defer();
@@ -227,14 +335,34 @@ angular.module('synchro', [])
     elevages.splice(0,elevages.length);
   }
 
-  var elevagesFromUserDoc = function(userDoc) {
+  var elevagesToDelete = function(oldElevages) {
+    var etd = [];
+    oldElevages.forEach(function(old) {
+      var find = false;
+      for(var i=0; i<elevages.length; i++) {
+        if(elevages[i].id == old.id) {
+          if(!(elevages[i].date) && old.date) {
+            etd.push(old.id);
+          }
+          find = true;
+          break;
+        }
+      }
+      !find&&etd.push(old.id);
+    });
+    return etd;
+  }
+
+  var elevagesFromUserDoc = function(userDoc, syncAnimauxFlag) {
+    var oldElevages = elevages.map(function(e) { return {id:e.id, date:e.date}});
     resetElevage();
     userDoc.tournees.forEach(function(t) {
       addElevage(t.id, t.date, t.name);
     });
-    //var idElevages = elevages.map(function(e) { return e.id });
-    //$log.log(JSON.stringify(idElevages));
-    sa.changeSync(elevages.map(function(e) { return e.id }));
+    $log.log("OldElevages : "+JSON.stringify(oldElevages));
+    syncAnimauxFlag&&sa.loadAnimaux(elevages);
+    syncAnimauxFlag&&sa.changeSync(elevages.map(function(e) { if(e.date) return e.id }));
+    //syncAnimauxFlag&&sa.changeSync(elevages.map(function(e) { if(e.date) return e.id }), elevagesToDelete(oldElevages));
   }
 
   var scopes = [];
@@ -260,10 +388,14 @@ angular.module('synchro', [])
 
   //First initialization
   userDb.get(sc.userId).then(function(userDoc) {
-    elevagesFromUserDoc(userDoc);
+    $log.log("UserDoc :"+JSON.stringify(userDoc));
+    elevagesFromUserDoc(userDoc,false);
     $log.log("Elevages :"+JSON.stringify(elevages));
     elevages_q.resolve(elevages);
-  });
+  }).catch(function(err) {
+    $log.log("User doc empty : "+err);
+    elevages_q.resolve(elevages);
+  } ) ;
 
   return {
     listenElevages: function(scope) {
@@ -277,6 +409,8 @@ angular.module('synchro', [])
       removeScope(scope);
     },
     start: function() {
+      $log.log("synchroManager starting global synchronization");
+      sa.changeSync(elevages.map(function(e) { if(e.date) return e.id }), []);
       handler = userDb.replicate.from(sc.usersUrl, {
         live:true,
         retry:true,
@@ -285,42 +419,68 @@ angular.module('synchro', [])
       })
       .on('change', function (change) {
         $log.log("change :"+JSON.stringify(change.docs[0]));
-        elevagesFromUserDoc(change.docs[0]);
+        elevagesFromUserDoc(change.docs[0], true);
         applyScope();
       })
       .on('paused', function (info) {
         // replication was paused, usually because of a lost connection
-        $log.log("paused :"+JSON.stringify(info));
+        syncOff();
+        $log.log("paused user:"+JSON.stringify(info));
       })
       .on('active', function (info) {
         // replication was resumed
+        syncOn();
         $log.log("active :"+JSON.stringify(info));
       })
       .on('error', function (err) {
         // totally unhandled error (shouldn't happen)
+        syncOff();
         $log.log("error :"+JSON.stringify(err));
       });
     },
+
+    forceSync: function(elevage) {
+      userDb.get(sc.userId).then(function(doc){
+        $log.log("Recuperation des tournees pour l'ajout de l'elevage "+elevage.id+ " "+JSON.stringify(doc));
+        for(var i=0; i<doc.tournees.length; i++) {
+          var t = doc.tournees[i];
+          if(t.id == elevage.id) {
+            $log.log("Tournee pour l'elevage trouve...")
+            t.date = true;
+            return userDb.put(doc).then(function(result) {
+              elevagesFromUserDoc(doc, true);
+            });
+          }
+        }
+      }); 
+    },
+
     stop: function() {
+      sa.stop();
       if(handler) {
         handler.cancel();
+        handler = null;
       }
     }
   };
 }])
 
-.controller('elevagesCtrl', ['$log', '$scope', 'synchroManager', '$ionicModal','synchroAnimaux', function($log, $scope, sm, im, sa) {
+.controller('elevagesCtrl', ['$log', '$scope', 'synchroManager', '$ionicModal','synchroAnimaux', '$timeout', '$ionicPopup', function($log, $scope, sm, im, sa, $to,$ionicPopup) {
 
-  // On s'abonne aux modifications des elevages suite à syncrho
+  $scope.synchronizing = false;
 
-  sm.listenElevages($scope).then(function(elevages) {
+  sm.listenElevages($scope)
+  .then(function(elevages) {
     $scope.elevages = elevages;
     $scope.online = true;
-  });
-
-  sa.listenAnimaux($scope).then(function(animauxByElevage) {
+    sa.loadAnimaux(elevages);
+    return sa.listenAnimaux($scope);
+  })
+  .then(function(animauxByElevage) {
     $scope.animauxByElevage = animauxByElevage;
-  });
+    // Ok, on peut démarrer la synchro
+    sm.start();
+  })
 
   // Dans le cas ou le scope disparait : on se désabonne ...
 
@@ -329,8 +489,30 @@ angular.module('synchro', [])
     sa.unlistenAnimaux($scope);
   });
 
+  var stoppingSync;
+
+  // Etat de la synchronisation ...
+
+  $scope.$on("startSyncronizing", function handler() {
+    $log.log("Received message : startSyncronizing");
+    if(stoppingSync) {
+      $to.cancel(stoppingSync);
+      stoppingSync=null;
+    } 
+    $scope.$apply(function() {$scope.synchronizing=true});
+  });
+
+  $scope.$on("stopSyncronizing", function handler() {
+    $log.log("Received message : stopSyncronizing");
+    if(stoppingSync) {
+      $to.cancel(stoppingSync);
+    }
+    stoppingSync=$to(function() {$log.log("**");$scope.synchronizing=false; stoppingSync=null}, 2000);
+  });
+
   $scope.log = function() {
     $log.log("Elevages :" + JSON.stringify($scope.elevages));
+    $log.log("Synchronizing:" + $scope.synchronizing);
   };
 
   // Voir l'elevage
@@ -354,8 +536,27 @@ angular.module('synchro', [])
   // Toggle synchro
   $scope.toggleSync = function() {
     $scope.online = !$scope.online;
+    $scope.synchronizing = false;
+    $scope.online?sm.start():sm.stop();
   }
 
+  // Reset
+  $scope.reset = function() {
+    var confirmPopup = $ionicPopup.confirm({
+      title: 'Réinitialiser la base',
+      template: 'Etes vous sûr de vouloir réinitialiser votre base ?',
+      cancelText: 'Annuler'
+    });
+    confirmPopup.then(function(res) {
+        res&&sa.reset($scope.elevages);
+    });
+  }
+
+  // Forcer la synchronisation d'un elevage
+  $scope.forceSync = function(elevage) {
+    sm.forceSync(elevage);
+    elevage.date=true;
+  } 
   // Gestion du detail : on utilise la fonction modale de ionic.
 
   // Create and load the Modal
@@ -365,6 +566,5 @@ angular.module('synchro', [])
     scope: $scope,
     animation: 'slide-in-up'
   });
-
 
 }])

@@ -3,6 +3,6 @@
   "version": "1.0.0",
   "description": "scripts pour les bases couchdb",
   "dependencies": {
-    "pouchdb": "~3.6.0"
+    "pouchdb": "~4.0.0"
   }
 }

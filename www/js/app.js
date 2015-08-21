@@ -419,6 +419,15 @@ angular.module('synchro', [])
       })
       .on('change', function (change) {
         $log.log("change :"+JSON.stringify(change.docs[0]));
+        userDb.get(change.docs[0]._id, {conflicts: true}).then(function (doc) {
+          $log.log(" >>> CONFLIT TEST <<<<< : "+JSON.stringify(doc));
+          if(doc._rev!=change.docs[0]._rev) {
+            $log.log("|||||||||||||||||||| Suppression rev obsolete ||||||||||||||| "+doc._rev);
+            userDb.remove(doc._id, doc._rev);
+          }
+          }).catch(function (err) {
+              // handle any errors
+        });
         elevagesFromUserDoc(change.docs[0], true);
         applyScope();
       })
@@ -554,6 +563,7 @@ angular.module('synchro', [])
 
   // Forcer la synchronisation d'un elevage
   $scope.forceSync = function(elevage) {
+    $scope.online = true;
     sm.forceSync(elevage);
     elevage.date=true;
   } 

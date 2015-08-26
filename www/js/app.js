@@ -22,8 +22,8 @@ angular.module('synchro', [])
 
 .factory('synchroConfiguration', function() {
 
-  var ROOT_DB = "http://localhost:5984";
-
+  //var ROOT_DB = "http://192.168.1.90:5984";
+  var ROOT_DB = "http://localhost:5984"
   return {
     userId : "bcelo",
     usersUrl : ROOT_DB+"/users",
@@ -193,7 +193,7 @@ angular.module('synchro', [])
 
   var startSyncAnimaux = function(idElevages) {
     var idEl = [];
-    idElevages.forEach(function(id) {id&&idEl.push(id)});
+    idElevages.forEach(function(id) {(id>=0)&&idEl.push(id)});
     $log.log("Starting sync animaux entities "+JSON.stringify(idEl));
       handler = animauxDB.replicate.from(sc.animauxUrl, {
         live:true,

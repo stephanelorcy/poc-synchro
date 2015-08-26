@@ -25,7 +25,7 @@ angular.module('synchro', [])
   var ROOT_DB = "http://localhost:5984";
 
   return {
-    userId : "slo",
+    userId : "bcelo",
     usersUrl : ROOT_DB+"/users",
     animauxUrl : ROOT_DB+"/animaux"
   }

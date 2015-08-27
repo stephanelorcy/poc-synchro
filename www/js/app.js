@@ -22,8 +22,8 @@ angular.module('synchro', [])
 
 .factory('synchroConfiguration', function() {
 
-  var ROOT_DB = "http://192.168.1.90:5984";
-  //var ROOT_DB = "http://localhost:5984"
+  //var ROOT_DB = "http://192.168.1.90:5984";
+  var ROOT_DB = "http://localhost:5984"
   return {
     userId : "bcelo",
     usersUrl : ROOT_DB+"/users",

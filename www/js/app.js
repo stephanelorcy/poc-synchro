@@ -22,8 +22,8 @@ angular.module('synchro', [])
 
 .factory('synchroConfiguration', function() {
 
-  //var ROOT_DB = "http://192.168.1.90:5984";
-  var ROOT_DB = "http://localhost:5984"
+  var ROOT_DB = "http://192.168.1.90:5984";
+  //var ROOT_DB = "http://localhost:5984"
   return {
     userId : "bcelo",
     usersUrl : ROOT_DB+"/users",
@@ -56,6 +56,15 @@ angular.module('synchro', [])
           //});
         }
       }
+    },
+    notifyErrorSync: function() {
+      n=0;
+      $log.log("Notifying error ...");
+      $rs.$broadcast('errorSyncronizing');
+    },
+    notifyRepriseSync: function() {
+      $log.log("Notifying end error sync ...");
+      $rs.$broadcast('repriseSyncronizing');
     }
   }
 }])
@@ -101,6 +110,14 @@ angular.module('synchro', [])
 
   var syncOff = function() {
     sn.synchronizingOff();
+  }
+
+  var notifyErrorSync = function() {
+    sn.notifyErrorSync();
+  }
+
+  var notifyRepriseSync = function() {
+    sn.notifyRepriseSync();
   }
 
   function updateAnimal(animaux, animal) {
@@ -193,11 +210,24 @@ angular.module('synchro', [])
 
   var startSyncAnimaux = function(idElevages) {
     var idEl = [];
+    var resetDelay = true;
     idElevages.forEach(function(id) {(id>=0)&&idEl.push(String(id))});
     $log.log("Starting sync animaux entities "+JSON.stringify(idEl));
       handler = animauxDB.replicate.from(sc.animauxUrl, {
         live:true,
         retry:true,
+        back_off_function: function (delay) {
+          $log.log("~~~~ Delai : " + delay);
+          if(resetDelay) {
+            resetDelay = false;
+            notifyErrorSync();
+            return 500;
+          }
+          if (delay === 6000) {
+            return delay;
+          }
+          return delay + 500;
+        },
         filter: 'custom/byElevages',
         query_params: {elevagesIds: idEl.join(",")}
       })
@@ -209,6 +239,10 @@ angular.module('synchro', [])
       .on('paused', function (info) {
         // replication was paused, usually because of a lost connection
         syncOff();
+        if(!resetDelay) {
+          resetDelay = true;
+          notifyRepriseSync();
+        }
         $log.log("paused animaux:"+JSON.stringify(info));
       })
       .on('active', function (info) {
@@ -217,7 +251,7 @@ angular.module('synchro', [])
       })
       .on('error', function (err) {
         // totally unhandled error (shouldn't happen)
-        syncOff();
+        notifyErrorSync();
         $log.log("error :"+JSON.stringify(err));
       });
   }
@@ -298,6 +332,10 @@ angular.module('synchro', [])
 
   var syncOff = function() {
     syncNotifier.synchronizingOff();
+  }
+
+  var notifyErrorSync = function() {
+    syncNotifier.notifyErrorSync();
   }
 
   var elevages = [];
@@ -443,7 +481,7 @@ angular.module('synchro', [])
       })
       .on('error', function (err) {
         // totally unhandled error (shouldn't happen)
-        syncOff();
+        notifyErrorSync();
         $log.log("error :"+JSON.stringify(err));
       });
     },
@@ -476,7 +514,7 @@ angular.module('synchro', [])
 
 .controller('elevagesCtrl', ['$log', '$scope', 'synchroManager', '$ionicModal','synchroAnimaux', '$timeout', '$ionicPopup', function($log, $scope, sm, im, sa, $to,$ionicPopup) {
 
-  $scope.synchronizing = false;
+  $scope.synchronizing = 0;
 
   sm.listenElevages($scope)
   .then(function(elevages) {
@@ -508,7 +546,7 @@ angular.module('synchro', [])
       $to.cancel(stoppingSync);
       stoppingSync=null;
     } 
-    $scope.$apply(function() {$scope.synchronizing=true});
+    $scope.$apply(function() {$scope.synchronizing=1});
   });
 
   $scope.$on("stopSyncronizing", function handler() {
@@ -516,8 +554,21 @@ angular.module('synchro', [])
     if(stoppingSync) {
       $to.cancel(stoppingSync);
     }
-    stoppingSync=$to(function() {$log.log("**");$scope.synchronizing=false; stoppingSync=null}, 2000);
+    stoppingSync=$to(function() {$log.log("**");$scope.synchronizing=0; stoppingSync=null}, 2000);
   });
+
+  $scope.$on("errorSyncronizing", function handler() {
+    $log.log("Received message : errorSyncronizing");
+    if(stoppingSync) {
+      $to.cancel(stoppingSync);
+      stoppingSync=null;
+    } 
+    $scope.$apply($scope.synchronizing=2);
+  });
+
+  $scope.$on("repriseSyncronizing", function handler() {
+    $scope.$apply($scope.synchronizing=0);
+  })
 
   $scope.log = function() {
     $log.log("Elevages :" + JSON.stringify($scope.elevages));
@@ -545,7 +596,7 @@ angular.module('synchro', [])
   // Toggle synchro
   $scope.toggleSync = function() {
     $scope.online = !$scope.online;
-    $scope.synchronizing = false;
+    $scope.synchronizing = 0;
     $scope.online?sm.start():sm.stop();
   }
 

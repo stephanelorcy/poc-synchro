@@ -36,7 +36,7 @@
         <button class="button button-icon" ng-click="toggleSync()">
           <i class="icon" ng-class="{'ion-connection-bars' : online, 'ion-alert-circled' : !online}"></i>
         </button>
-        <i class="icon padding" ng-show = "online" ng-model-instant ng-class="{'ion-load-d' : synchronizing, 'ion-ios-checkmark-empty' : !synchronizing}"></i>
+        <i class="icon padding" ng-show = "online" ng-model-instant ng-class="{'ion-load-d' : (synchronizing==1), 'ion-ios-checkmark-empty' : (synchronizing==0), 'ion-android-alert' : (synchronizing==2)}"></i>
         <h1 class="title">Sample Synchro</h1>
         <button class="button button-assertive" ng-click="reset()">
           reset
@@ -65,7 +65,7 @@
 
       <!-- Modal header bar -->
       <ion-header-bar class="bar-secondary">
-        <i class="icon padding" ng-show = "online" ng-model-instant ng-class="{'ion-load-d' : synchronizing, 'ion-ios-checkmark-empty' : !synchronizing}"></i>
+        <i class="icon padding" ng-show = "online" ng-model-instant ng-class="{'ion-load-d' : (synchronizing==1), 'ion-ios-checkmark-empty' : (synchronizing==0), 'ion-android-alert' : (synchronizing==2)}"></i>
         <h1 class="title">{{elevage.name}}</h1>
         <button class="button button-clear button-positive" ng-click="cancelElevage()">Cancel</button>
       </ion-header-bar>

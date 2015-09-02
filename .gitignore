@@ -6,3 +6,4 @@ platforms/
 plugins/
 www/lib/
 scripts/node_modules/
+.DS_Store
